@@ -1,0 +1,1267 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>La vuelta</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        
+        body {
+            font-family: 'Arial', sans-serif;
+            overflow: hidden;
+            background: transparent;
+            user-select: none;
+        }
+
+        #hud-container {
+            position: fixed;
+            width: 100vw;
+            height: 100vh;
+            pointer-events: none;
+        }
+
+        /* Contenedor principal abajo izquierda - AUMENTADO 15% */
+        .bottom-left-hud {
+            position: fixed;
+            bottom: 20px;
+            left: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 9px;
+            transition: all 0.3s ease;
+            transform: scale(1.15);
+            transform-origin: bottom left;
+        }
+
+        .bottom-left-hud.in-vehicle {
+            /* Ya no movemos por estar en vehículo. El desplazamiento depende de .with-minimap */
+            transition: left 0.3s ease;
+        }
+
+        /* Cuando el minimapa está visible (ya sea en vehículo o forzado con /mapa),
+           empujar el HUD hacia la derecha para no taparlo. */
+        .bottom-left-hud.with-minimap {
+            /* Offset configurable por variable para distintas resoluciones/aspectos */
+            left: var(--minimap-offset, 350px);
+        }
+
+    /* Ajustes responsivos para resoluciones bajas */
+    .hud-compact .bar { width: 130px; }
+    .hud-tiny .bar { width: 120px; }
+    .hud-compact .bar-icon { font-size: 13px; }
+    .hud-tiny .bar-icon { font-size: 12px; }
+    .hud-compact .bar-value { font-size: 10px; }
+    .hud-tiny .bar-value { font-size: 10px; }
+    .hud-compact .lower-hud { gap: 12px; }
+    .hud-tiny .lower-hud { gap: 10px; }
+    .hud-compact .voice-box { height: 28px; min-width: 70px; }
+    .hud-tiny .voice-box { height: 26px; min-width: 66px; }
+    .hud-compact .stat i { font-size: 13px; }
+    .hud-tiny .stat i { font-size: 12px; }
+    .hud-compact .stat span { font-size: 10px; }
+    .hud-tiny .stat span { font-size: 10px; }
+    .hud-compact .vehicle-hud { bottom: 28px; right: 18px; }
+    .hud-tiny .vehicle-hud { bottom: 24px; right: 16px; }
+    .hud-compact .speed-value { font-size: 42px; }
+    .hud-tiny .speed-value { font-size: 38px; }
+    .hud-compact .money-container { top: 40px; }
+    .hud-tiny .money-container { top: 36px; }
+    .hud-compact .job-container { top: 165px; }
+    .hud-tiny .job-container { top: 155px; }
+
+        /* Barras de vida y armor con brillo suave */
+        .bars-container {
+            display: flex;
+            flex-direction: column;
+            gap: 3px;
+            margin-bottom: 5px;
+        }
+
+        .bar-wrapper {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            position: relative;
+        }
+
+        .bar-icon {
+            font-size: 14px;
+            color: white;
+            width: 16px;
+            text-align: center;
+            text-shadow: 0 0 6px rgba(255, 255, 255, 0.5);
+            filter: drop-shadow(0 0 2px rgba(255, 255, 255, 0.3));
+        }
+
+        .bar {
+            width: 150px;
+            height: 6px;
+            background: rgba(0, 0, 0, 0.5);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 3px;
+            overflow: hidden;
+            position: relative;
+            box-shadow: 0 0 6px rgba(255, 255, 255, 0.1);
+        }
+
+        .bar-fill {
+            height: 100%;
+            border-radius: 2px;
+            transition: width 0.3s ease;
+        }
+
+        .health-fill {
+            background: linear-gradient(90deg, #27ae60, #2ecc71);
+            box-shadow: 0 0 8px rgba(46, 204, 113, 0.5);
+        }
+
+        .armor-fill {
+            background: linear-gradient(90deg, #2980b9, #3498db);
+            box-shadow: 0 0 8px rgba(52, 152, 219, 0.5);
+        }
+
+        .bar-wrapper.hidden {
+            display: none;
+        }
+
+        /* Números de vida y escudo */
+        .bar-value {
+            margin-left: 5px;
+            font-size: 11px;
+            color: white;
+            font-weight: bold;
+            text-shadow: 0 0 5px rgba(255, 255, 255, 0.4);
+            min-width: 25px;
+        }
+
+        /* Contenedor inferior con voice y stats */
+        .lower-hud {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+
+        /* Voice box con cambio de color al hablar */
+        .voice-box {
+            background: rgba(0, 0, 0, 0.7);
+            padding: 6px 10px;
+            border-radius: 3px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            height: 32px;
+            min-width: 80px; /* Aumentado de 60px para acomodar el ID */
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            transition: all 0.3s ease;
+            box-shadow: 0 0 6px rgba(0, 0, 0, 0.3);
+        }
+
+        /* Voice box cuando habla - cambia a verde */
+        .voice-box.talking {
+            background: rgba(46, 204, 113, 0.2);
+            border-color: rgba(46, 204, 113, 0.5);
+            box-shadow: 0 0 12px rgba(46, 204, 113, 0.3);
+        }
+
+        .voice-box i {
+            font-size: 12px;
+            color: white;
+            opacity: 0.6;
+            transition: all 0.2s ease;
+            text-shadow: 0 0 5px rgba(255, 255, 255, 0.4);
+        }
+
+        .voice-box.talking i {
+            opacity: 1;
+            color: #2ecc71;
+            text-shadow: 0 0 8px rgba(46, 204, 113, 0.6);
+        }
+
+        /* ID del jugador */
+        .player-id {
+            font-size: 11px;
+            color: white;
+            font-weight: bold;
+            opacity: 0.9;
+            text-shadow: 0 0 5px rgba(255, 255, 255, 0.4);
+            margin-left: 2px;
+            min-width: 15px;
+            text-align: center;
+        }
+
+        .voice-box.talking .player-id {
+            color: #2ecc71;
+            text-shadow: 0 0 6px rgba(46, 204, 113, 0.6);
+        }
+
+        /* Barras de voz animadas */
+        .voice-waves {
+            display: flex;
+            align-items: center;
+            gap: 2px;
+            height: 16px;
+        }
+
+        .voice-wave {
+            width: 3px;
+            height: 8px;
+            background: rgba(255, 255, 255, 0.3);
+            border-radius: 2px;
+            transition: all 0.2s ease;
+            box-shadow: 0 0 3px rgba(255, 255, 255, 0.2);
+        }
+
+        /* Estados de rango de voz */
+        .voice-box.range-1 .voice-wave:nth-child(1) {
+            background: rgba(255, 255, 255, 0.8);
+            height: 10px;
+            box-shadow: 0 0 5px rgba(255, 255, 255, 0.4);
+        }
+
+        .voice-box.range-2 .voice-wave:nth-child(1),
+        .voice-box.range-2 .voice-wave:nth-child(2) {
+            background: rgba(255, 255, 255, 0.8);
+            height: 12px;
+            box-shadow: 0 0 5px rgba(255, 255, 255, 0.4);
+        }
+
+        .voice-box.range-3 .voice-wave {
+            background: rgba(255, 255, 255, 0.8);
+            height: 14px;
+            box-shadow: 0 0 5px rgba(255, 255, 255, 0.4);
+        }
+
+        /* Animación cuando habla */
+        .voice-box.talking .voice-wave {
+            animation: soundWave 0.5s infinite ease-in-out;
+            background: #2ecc71;
+            box-shadow: 0 0 6px rgba(46, 204, 113, 0.5);
+        }
+
+        .voice-box.talking .voice-wave:nth-child(1) {
+            animation-delay: 0s;
+        }
+
+        .voice-box.talking .voice-wave:nth-child(2) {
+            animation-delay: 0.1s;
+        }
+
+        .voice-box.talking .voice-wave:nth-child(3) {
+            animation-delay: 0.2s;
+        }
+
+        @keyframes soundWave {
+            0%, 100% { 
+                height: 8px;
+                opacity: 0.5;
+            }
+            50% { 
+                height: 16px;
+                opacity: 1;
+            }
+        }
+
+        /* Stats minimalistas con brillo suave */
+        .stats-container {
+            display: flex;
+            gap: 15px;
+            align-items: center;
+        }
+
+        .stat {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+
+        .stat i {
+            font-size: 14px;
+            color: white;
+            opacity: 0.9;
+            transition: all 0.2s ease;
+            text-shadow: 0 0 6px rgba(255, 255, 255, 0.5);
+            filter: drop-shadow(0 0 2px rgba(255, 255, 255, 0.3));
+        }
+
+        .stat span {
+            font-size: 11px;
+            color: white;
+            font-weight: bold;
+            text-shadow: 0 0 5px rgba(255, 255, 255, 0.4);
+        }
+
+        .stat.critical i {
+            color: #e74c3c;
+            animation: pulse 0.8s infinite;
+            text-shadow: 0 0 10px rgba(231, 76, 60, 0.6);
+        }
+
+        .stat.low i {
+            color: #f39c12;
+            opacity: 0.7;
+            text-shadow: 0 0 8px rgba(243, 156, 18, 0.5);
+        }
+
+        .stat.oxygen {
+            display: none;
+        }
+
+        .stat.oxygen.show {
+            display: flex;
+        }
+
+        /* Velocímetro - AJUSTADO MÁS ARRIBA */
+        .vehicle-hud {
+            position: fixed;
+            bottom: 35px;
+            right: 20px;
+            display: none;
+            align-items: flex-end;
+            gap: 15px;
+        }
+
+        .vehicle-hud.show {
+            display: flex;
+        }
+
+        /* Contenedor principal de velocidad */
+        .speed-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .speed-value {
+            font-size: 48px;
+            font-weight: bold;
+            color: white;
+            line-height: 1;
+            text-shadow: 0 0 12px rgba(255, 255, 255, 0.5),
+                         0 2px 4px rgba(0, 0, 0, 0.5);
+            letter-spacing: 2px;
+        }
+
+        .speed-unit {
+            font-size: 14px;
+            color: white;
+            opacity: 0.9;
+            font-weight: 500;
+            text-shadow: 0 0 6px rgba(255, 255, 255, 0.4);
+            letter-spacing: 1px;
+            margin-top: -5px;
+        }
+
+        /* Barra de velocidad */
+        .speed-bar {
+            width: 80px;
+            height: 3px;
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 2px;
+            overflow: hidden;
+            position: relative;
+            margin-top: 5px;
+        }
+
+        .speed-bar-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #2ecc71, #3498db);
+            transition: width 0.3s ease;
+            box-shadow: 0 0 6px rgba(46, 204, 113, 0.5);
+        }
+
+        /* Contenedor de iconos y combustible */
+        .vehicle-stats {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            align-items: center;
+        }
+
+        /* Combustible con barra y porcentaje */
+        .fuel-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 5px;
+        }
+
+        .fuel-info {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .fuel-info i {
+            font-size: 16px;
+            color: white;
+            opacity: 0.8;
+            text-shadow: 0 0 6px rgba(255, 255, 255, 0.4);
+        }
+
+        .fuel-percentage {
+            font-size: 12px;
+            color: white;
+            font-weight: bold;
+            text-shadow: 0 0 5px rgba(255, 255, 255, 0.4);
+        }
+
+        .fuel-bar {
+            width: 60px;
+            height: 3px;
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 2px;
+            overflow: hidden;
+            position: relative;
+        }
+
+        .fuel-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #f39c12, #f1c40f);
+            transition: width 0.3s ease;
+            box-shadow: 0 0 6px rgba(241, 196, 15, 0.5);
+        }
+
+        /* Iconos del vehículo */
+        .vehicle-icons {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            align-items: center;
+        }
+
+        .vehicle-icons i {
+            font-size: 16px;
+            color: rgba(255, 255, 255, 0.3);
+            transition: all 0.2s ease;
+            text-shadow: 0 0 4px rgba(255, 255, 255, 0.2);
+        }
+
+        .vehicle-icons i.active {
+            color: white;
+            opacity: 1;
+            text-shadow: 0 0 10px rgba(255, 255, 255, 0.6);
+            filter: drop-shadow(0 0 3px rgba(255, 255, 255, 0.4));
+        }
+
+        /* Estados específicos para luces */
+        #lights-icon {
+            color: rgba(255, 255, 255, 0.3) !important; /* Apagadas - GRIS */
+            opacity: 0.3 !important;
+            text-shadow: none !important;
+            filter: none !important;
+        }
+        
+        #lights-icon.low-beam {
+            color: #f1c40f !important; /* Luces bajas - AMARILLO */
+            opacity: 0.9 !important;
+            text-shadow: 0 0 8px rgba(241, 196, 15, 0.6) !important;
+            filter: drop-shadow(0 0 3px rgba(241, 196, 15, 0.4)) !important;
+        }
+
+        #lights-icon.high-beam {
+            color: #3498db !important; /* Luces altas - AZUL */
+            opacity: 1 !important;
+            text-shadow: 0 0 12px rgba(52, 152, 219, 0.8) !important;
+            filter: drop-shadow(0 0 5px rgba(52, 152, 219, 0.6)) !important;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.3; }
+        }
+
+        /* Sistema de dinero - Arriba a la DERECHA */
+        .money-container {
+            position: fixed;
+            top: 50px; /* Bajado para evitar overlap con FiveM */
+            right: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 0;
+            background: transparent;
+            padding: 0;
+            border-radius: 0;
+            border: none;
+            box-shadow: none;
+            min-width: 170px;
+            transition: all 0.3s ease;
+            /* Oculto por defecto hasta que el cliente lo active */
+            opacity: 0;
+            transform: translateX(20px);
+            pointer-events: none;
+        }
+
+        .money-container.hidden {
+            opacity: 0;
+            transform: translateX(20px);
+            pointer-events: none;
+        }
+
+        .money-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+            transition: all 0.3s ease;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 6px 10px;
+            border-radius: 4px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.5);
+            margin-bottom: 8px;
+            min-height: 28px;
+        }
+
+        .money-item:last-child {
+            margin-bottom: 0;
+        }
+
+        .money-item.hidden {
+            display: none;
+        }
+
+        .money-label {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .money-label i {
+            font-size: 13px;
+            width: 15px;
+            text-align: center;
+            text-shadow: 0 0 5px currentColor;
+        }
+
+        .money-label span {
+            font-size: 11px;
+            color: rgba(255, 255, 255, 0.85);
+            text-transform: uppercase;
+            letter-spacing: 0.8px;
+            font-weight: 600;
+        }
+
+        .money-value {
+            font-size: 13px;
+            font-weight: bold;
+            text-shadow: 0 0 5px currentColor;
+            letter-spacing: 0.5px;
+            font-family: 'Arial', sans-serif;
+        }
+
+        /* Colores para cada tipo de dinero */
+        .money-cash i {
+            color: #2ecc71;
+        }
+
+        .money-cash .money-value {
+            color: #2ecc71;
+        }
+
+        .money-bank i {
+            color: #3498db;
+        }
+
+        .money-bank .money-value {
+            color: #3498db;
+        }
+
+        .money-black i {
+            color: #e74c3c;
+        }
+
+        .money-black .money-value {
+            color: #e74c3c;
+        }
+
+        /* Trabajo actual - MODIFICADO PARA MISMO TAMAÑO */
+        .job-container {
+            position: fixed;
+            top: 182px; /* Ajustado para estar debajo del dinero con espaciado */
+            right: 20px;
+            background: rgba(0, 0, 0, 0.7); /* Mismo fondo que el dinero */
+            padding: 6px 10px; /* MISMO PADDING QUE EL DINERO */
+            border-radius: 4px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.5);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            min-width: 170px; /* MISMO ANCHO QUE EL DINERO */
+            min-height: 28px; /* MISMA ALTURA QUE EL DINERO */
+            transition: all 0.3s ease;
+            /* Oculto por defecto hasta que el cliente lo active */
+            opacity: 0;
+            transform: translateX(20px);
+            pointer-events: none;
+        }
+
+        .job-container.show {
+            opacity: 1;
+        }
+
+        .job-container.hidden {
+            opacity: 0 !important;
+            transform: translateX(20px);
+            pointer-events: none;
+        }
+
+        .job-container i {
+            font-size: 13px; /* MISMO TAMAÑO DE ICONO QUE EL DINERO */
+            color: #f39c12;
+            text-shadow: 0 0 5px rgba(243, 156, 18, 0.5);
+        }
+
+        .job-info {
+            display: flex;
+            flex-direction: column;
+            gap: 1px; /* Reducido para ajustar mejor */
+        }
+
+        .job-name {
+            font-size: 11px; /* REDUCIDO PARA IGUALAR */
+            color: white;
+            font-weight: bold;
+            text-shadow: 0 0 5px rgba(255, 255, 255, 0.4);
+        }
+
+        .job-grade {
+            font-size: 9px; /* REDUCIDO PARA IGUALAR */
+            color: rgba(255, 255, 255, 0.6);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+    </style>
+</head>
+<body>
+    <div id="hud-container">
+        <!-- Sistema de dinero y trabajo - Arriba -->
+        <div class="money-container" id="money-container">
+            <div class="money-item money-cash" id="money-cash">
+                <div class="money-label">
+                    <i class="fas fa-wallet"></i>
+                    <span>Efectivo</span>
+                </div>
+                <div class="money-value">$<span id="cash-value">0</span></div>
+            </div>
+            <div class="money-item money-bank" id="money-bank">
+                <div class="money-label">
+                    <i class="fas fa-credit-card"></i>
+                    <span>Banco</span>
+                </div>
+                <div class="money-value">$<span id="bank-value">0</span></div>
+            </div>
+            <div class="money-item money-black hidden" id="money-black">
+                <div class="money-label">
+                    <i class="fas fa-coins"></i>
+                    <span>Negro</span>
+                </div>
+                <div class="money-value">$<span id="black-value">0</span></div>
+            </div>
+        </div>
+
+        <!-- Trabajo actual -->
+        <div class="job-container" id="job-container">
+            <i class="fas fa-briefcase"></i>
+            <div class="job-info">
+                <div class="job-name" id="job-name">Desempleado</div>
+                <div class="job-grade" id="job-grade">Sin rango</div>
+            </div>
+        </div>
+
+        <!-- HUD Principal Izquierda -->
+        <div class="bottom-left-hud" id="bottom-left-hud">
+            <!-- Barras ARRIBA -->
+            <div class="bars-container">
+                <div class="bar-wrapper hidden" id="armor-bar-container">
+                    <i class="fas fa-shield-alt bar-icon"></i>
+                    <div class="bar">
+                        <div class="bar-fill armor-fill" id="armor-fill"></div>
+                    </div>
+                    <span class="bar-value" id="armor-value">0</span>
+                </div>
+                <div class="bar-wrapper">
+                    <i class="fas fa-heart bar-icon"></i>
+                    <div class="bar">
+                        <div class="bar-fill health-fill" id="health-fill"></div>
+                    </div>
+                    <span class="bar-value" id="health-value">100</span>
+                </div>
+            </div>
+
+            <!-- Contenedor inferior con Voice y Stats -->
+            <div class="lower-hud">
+                <!-- Voice con barras animadas y cambio de color -->
+                <div class="voice-box range-2" id="voice-indicator">
+                    <i class="fas fa-microphone"></i>
+                    <div class="voice-waves">
+                        <div class="voice-wave"></div>
+                        <div class="voice-wave"></div>
+                        <div class="voice-wave"></div>
+                    </div>
+                    <span class="player-id" id="player-id">1</span>
+                </div>
+
+                <!-- Stats -->
+                <div class="stats-container">
+                    <div class="stat" id="hunger-stat">
+                        <i class="fas fa-hamburger"></i>
+                        <span id="hunger-value">100</span>
+                    </div>
+                    <div class="stat" id="thirst-stat">
+                        <i class="fas fa-tint"></i>
+                        <span id="thirst-value">100</span>
+                    </div>
+                    <div class="stat" id="stamina-stat">
+                        <i class="fas fa-bolt"></i>
+                        <span id="stamina-value">100</span>
+                    </div>
+                    <div class="stat oxygen" id="oxygen-stat">
+                        <i class="fas fa-lungs"></i>
+                        <span id="oxygen-value">100</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Velocímetro -->
+        <div class="vehicle-hud" id="vehicle-hud">
+            <!-- Velocidad principal -->
+            <div class="speed-container">
+                <div class="speed-value" id="speed-value">0</div>
+                <div class="speed-unit">KM/H</div>
+                <div class="speed-bar">
+                    <div class="speed-bar-fill" id="speed-bar-fill"></div>
+                </div>
+            </div>
+
+            <!-- Stats del vehículo -->
+            <div class="vehicle-stats">
+                <!-- Combustible con porcentaje y barra -->
+                <div class="fuel-container">
+                    <div class="fuel-info">
+                        <i class="fas fa-gas-pump" id="fuel-icon"></i>
+                        <span class="fuel-percentage" id="fuel-percentage">100%</span>
+                    </div>
+                    <div class="fuel-bar">
+                        <div class="fuel-fill" id="fuel-bar"></div>
+                    </div>
+                </div>
+
+                <!-- Iconos del vehículo -->
+                <div class="vehicle-icons">
+                    <i class="fas fa-lightbulb" id="lights-icon"></i>
+                    <i class="fas fa-cog" id="engine-icon"></i>
+                    <i class="fas fa-user-shield" id="seatbelt-icon"></i>
+                    <i class="fas fa-tachometer-alt" id="cruise-icon" title="Control de Crucero"></i>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Cache de elementos DOM
+        const elements = {
+            // Containers
+            hudContainer: document.getElementById('hud-container'),
+            moneyContainer: document.getElementById('money-container'),
+            jobContainer: document.getElementById('job-container'),
+            bottomLeftHud: document.getElementById('bottom-left-hud'),
+            vehicleHud: document.getElementById('vehicle-hud'),
+            armorContainer: document.getElementById('armor-bar-container'),
+            
+            // Values
+            healthFill: document.getElementById('health-fill'),
+            healthValue: document.getElementById('health-value'),
+            armorFill: document.getElementById('armor-fill'),
+            armorValue: document.getElementById('armor-value'),
+            staminaValue: document.getElementById('stamina-value'),
+            hungerValue: document.getElementById('hunger-value'),
+            thirstValue: document.getElementById('thirst-value'),
+            oxygenValue: document.getElementById('oxygen-value'),
+            
+            // Stats
+            staminaStat: document.getElementById('stamina-stat'),
+            hungerStat: document.getElementById('hunger-stat'),
+            thirstStat: document.getElementById('thirst-stat'),
+            oxygenStat: document.getElementById('oxygen-stat'),
+            
+            // Voice
+            voiceIndicator: document.getElementById('voice-indicator'),
+            
+            // Vehicle
+            speedValue: document.getElementById('speed-value'),
+            speedBarFill: document.getElementById('speed-bar-fill'),
+            fuelBar: document.getElementById('fuel-bar'),
+            fuelPercentage: document.getElementById('fuel-percentage'),
+            fuelIcon: document.getElementById('fuel-icon'),
+            lightsIcon: document.getElementById('lights-icon'),
+            engineIcon: document.getElementById('engine-icon'),
+            seatbeltIcon: document.getElementById('seatbelt-icon'),
+            cruiseIcon: document.getElementById('cruise-icon'),
+            
+            // Money
+            cashValue: document.getElementById('cash-value'),
+            bankValue: document.getElementById('bank-value'),
+            blackValue: document.getElementById('black-value'),
+            moneyBlack: document.getElementById('money-black'),
+            
+            // Job
+            jobName: document.getElementById('job-name'),
+            jobGrade: document.getElementById('job-grade'),
+            
+            // Player ID
+            playerId: document.getElementById('player-id')
+        };
+
+    // Overrides de layout (desde el cliente): offset en px y escala
+    const hudOverride = { offsetPx: null, scale: null };
+
+        // Estado del HUD
+        let hudState = {
+            moneyVisible: false,  // Iniciar con false para coincidir con el cliente
+            jobVisible: false,    // Iniciar con false para coincidir con el cliente
+            lastUpdate: 0
+        };
+
+        // Optimización: Batch updates
+        let updateQueue = {};
+        let updatePending = false;
+
+        function queueUpdate(fn) {
+            if (!updatePending) {
+                updatePending = true;
+                requestAnimationFrame(() => {
+                    fn();
+                    updatePending = false;
+                });
+            }
+        }
+
+        function formatMoney(value) {
+            return value.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+        }
+
+        function updateMoney(data) {
+            // Solo actualizar si el dinero está visible
+            if (!hudState.moneyVisible) return;
+            
+            queueUpdate(() => {
+                if (data.cash !== undefined) {
+                    elements.cashValue.textContent = formatMoney(data.cash);
+                }
+                
+                if (data.bank !== undefined) {
+                    elements.bankValue.textContent = formatMoney(data.bank);
+                }
+                
+                if (data.black !== undefined) {
+                    elements.blackValue.textContent = formatMoney(data.black);
+                    elements.moneyBlack.classList.toggle('hidden', data.black <= 0);
+                }
+            });
+        }
+
+        function updateJob(data) {
+            // Solo actualizar si el trabajo está visible
+            if (!hudState.jobVisible) {
+                elements.jobContainer.classList.remove('show');
+                elements.jobContainer.classList.add('hidden');
+                elements.jobContainer.style.opacity = '0';
+                elements.jobContainer.style.transform = 'translateX(20px)';
+                elements.jobContainer.style.pointerEvents = 'none';
+                return;
+            }
+            
+            if (data.job && data.job.name && data.job.name !== 'unemployed') {
+                elements.jobName.textContent = data.job.label || data.job.name;
+                elements.jobGrade.textContent = data.job.grade_label || `Rango ${data.job.grade || 0}`;
+                elements.jobContainer.classList.add('show');
+                elements.jobContainer.classList.remove('hidden');
+                elements.jobContainer.style.opacity = '1';
+                elements.jobContainer.style.transform = 'translateX(0)';
+                elements.jobContainer.style.pointerEvents = 'auto';
+            } else {
+                // Si no hay trabajo o es desempleado, ocultar
+                elements.jobContainer.classList.remove('show');
+                elements.jobContainer.classList.add('hidden');
+                elements.jobContainer.style.opacity = '0';
+                elements.jobContainer.style.transform = 'translateX(20px)';
+                elements.jobContainer.style.pointerEvents = 'none';
+            }
+        }
+
+        function updateHUD(data) {
+            // Health
+            if (data.health !== undefined) {
+                const health = Math.round(data.health);
+                elements.healthFill.style.width = `${health}%`;
+                elements.healthValue.textContent = health;
+            }
+            
+            // Armor
+            if (data.armor !== undefined) {
+                const armor = Math.round(data.armor);
+                elements.armorFill.style.width = `${armor}%`;
+                elements.armorValue.textContent = armor;
+                elements.armorContainer.classList.toggle('hidden', armor <= 0);
+            }
+            
+            // Stamina
+            if (data.stamina !== undefined) {
+                const stamina = Math.round(data.stamina);
+                elements.staminaValue.textContent = stamina;
+                elements.staminaStat.classList.remove('critical', 'low');
+                if (stamina <= 20) {
+                    elements.staminaStat.classList.add('critical');
+                } else if (stamina <= 40) {
+                    elements.staminaStat.classList.add('low');
+                }
+            }
+            
+            // Hunger
+            if (data.hunger !== undefined) {
+                const hunger = Math.round(data.hunger);
+                elements.hungerValue.textContent = hunger;
+                elements.hungerStat.classList.remove('critical', 'low');
+                if (hunger <= 20) {
+                    elements.hungerStat.classList.add('critical');
+                } else if (hunger <= 40) {
+                    elements.hungerStat.classList.add('low');
+                }
+            }
+            
+            // Thirst
+            if (data.thirst !== undefined) {
+                const thirst = Math.round(data.thirst);
+                elements.thirstValue.textContent = thirst;
+                elements.thirstStat.classList.remove('critical', 'low');
+                if (thirst <= 20) {
+                    elements.thirstStat.classList.add('critical');
+                } else if (thirst <= 40) {
+                    elements.thirstStat.classList.add('low');
+                }
+            }
+            
+            // Oxygen
+            if (data.oxygen !== undefined) {
+                const oxygen = Math.round(data.oxygen);
+                elements.oxygenValue.textContent = oxygen;
+                elements.oxygenStat.classList.toggle('show', data.showOxygen);
+                elements.oxygenStat.classList.toggle('critical', oxygen <= 30);
+            }
+            
+            // Vehicle state - IMPORTANTE: Actualizar inmediatamente
+            if (data.inVehicle !== undefined) {
+                if (data.inVehicle) {
+                    elements.bottomLeftHud.classList.add('in-vehicle');
+                } else {
+                    elements.bottomLeftHud.classList.remove('in-vehicle');
+                }
+            }
+            
+            // Voice
+            if (data.talking !== undefined) {
+                elements.voiceIndicator.classList.toggle('talking', data.talking);
+            }
+            
+            // Voice range
+            if (data.voiceRange !== undefined) {
+                elements.voiceIndicator.classList.remove('range-1', 'range-2', 'range-3');
+                elements.voiceIndicator.classList.add(`range-${data.voiceRange}`);
+            }
+            
+            // Player ID
+            if (data.playerId !== undefined) {
+                elements.playerId.textContent = data.playerId;
+            }
+        }
+
+        function updateVehicleHUD(data) {
+            if (data.inVehicle !== undefined) {
+                // Asegurar que se oculte/muestre correctamente
+                if (data.inVehicle) {
+                    elements.vehicleHud.classList.add('show');
+                } else {
+                    elements.vehicleHud.classList.remove('show');
+                    // Limpiar valores cuando sale del vehículo
+                    elements.speedValue.textContent = '0';
+                    elements.speedBarFill.style.width = '0%';
+                    return; // No procesar más si no está en vehículo
+                }
+            }
+            
+            // Solo actualizar estos valores si está en vehículo
+            if (!elements.vehicleHud.classList.contains('show')) return;
+            
+            if (data.speed !== undefined) {
+                const speed = Math.round(data.speed);
+                elements.speedValue.textContent = speed;
+                const speedPercent = Math.min((speed / 250) * 100, 100);
+                elements.speedBarFill.style.width = `${speedPercent}%`;
+            }
+            
+            if (data.fuel !== undefined) {
+                const fuelPercent = Math.round(data.fuel);
+                elements.fuelBar.style.width = `${fuelPercent}%`;
+                elements.fuelPercentage.textContent = `${fuelPercent}%`;
+                elements.fuelIcon.style.opacity = data.fuel > 20 ? '0.8' : '0.3';
+            }
+            
+            if (data.engineOn !== undefined) {
+                elements.engineIcon.classList.toggle('active', data.engineOn);
+            }
+            
+            if (data.lights !== undefined) {
+                elements.lightsIcon.classList.remove('active', 'low-beam', 'high-beam');
+                
+                switch(data.lights) {
+                    case 0:
+                        // Luces apagadas - GRIS
+                        break;
+                    case 1:
+                        // Luces bajas - AMARILLO
+                        elements.lightsIcon.classList.add('low-beam');
+                        break;
+                    case 2:
+                        // Luces altas - AZUL
+                        elements.lightsIcon.classList.add('high-beam');
+                        break;
+                }
+            }
+            
+            if (data.seatbelt !== undefined) {
+                elements.seatbeltIcon.classList.toggle('active', data.seatbelt);
+            }
+            
+            if (data.cruiseControl !== undefined) {
+                elements.cruiseIcon.classList.toggle('active', data.cruiseControl);
+            }
+        }
+
+        // Toggle Money/Job HUD
+        function toggleMoneyHUD(show) {
+            hudState.moneyVisible = show;
+            hudState.jobVisible = show;
+            
+            // Actualizar dinero
+            if (show) {
+                elements.moneyContainer.classList.remove('hidden');
+                elements.moneyContainer.style.opacity = '1';
+                elements.moneyContainer.style.transform = 'translateX(0)';
+                elements.moneyContainer.style.pointerEvents = 'auto';
+            } else {
+                elements.moneyContainer.classList.add('hidden');
+                elements.moneyContainer.style.opacity = '0';
+                elements.moneyContainer.style.transform = 'translateX(20px)';
+                elements.moneyContainer.style.pointerEvents = 'none';
+            }
+            
+            // Actualizar trabajo
+            if (show) {
+                if (elements.jobContainer.classList.contains('show')) {
+                    elements.jobContainer.classList.remove('hidden');
+                    elements.jobContainer.style.opacity = '1';
+                    elements.jobContainer.style.transform = 'translateX(0)';
+                    elements.jobContainer.style.pointerEvents = 'auto';
+                }
+            } else {
+                elements.jobContainer.classList.add('hidden');
+                elements.jobContainer.style.opacity = '0';
+                elements.jobContainer.style.transform = 'translateX(20px)';
+                elements.jobContainer.style.pointerEvents = 'none';
+            }
+        }
+
+        // Función para controlar solo el dinero
+        function toggleMoneyOnly(show) {
+            hudState.moneyVisible = show;
+            if (show) {
+                elements.moneyContainer.classList.remove('hidden');
+                elements.moneyContainer.style.opacity = '1';
+                elements.moneyContainer.style.transform = 'translateX(0)';
+                elements.moneyContainer.style.pointerEvents = 'auto';
+            } else {
+                elements.moneyContainer.classList.add('hidden');
+                elements.moneyContainer.style.opacity = '0';
+                elements.moneyContainer.style.transform = 'translateX(20px)';
+                elements.moneyContainer.style.pointerEvents = 'none';
+            }
+        }
+
+        // Función para controlar solo el trabajo
+        function toggleJobOnly(show) {
+            hudState.jobVisible = show;
+            if (show) {
+                elements.jobContainer.classList.remove('hidden');
+                elements.jobContainer.style.opacity = '1';
+                elements.jobContainer.style.transform = 'translateX(0)';
+                elements.jobContainer.style.pointerEvents = 'auto';
+            } else {
+                elements.jobContainer.classList.add('hidden');
+                elements.jobContainer.style.opacity = '0';
+                elements.jobContainer.style.transform = 'translateX(20px)';
+                elements.jobContainer.style.pointerEvents = 'none';
+            }
+        }
+
+        // Message handler
+        window.addEventListener('message', (event) => {
+            const data = event.data;
+            
+            switch(data.type) {
+                case 'showHUD':
+                    elements.hudContainer.style.display = data.show ? 'block' : 'none';
+                    break;
+                case 'updateHUD':
+                    updateHUD(data);
+                    break;
+                case 'updateVehicle':
+                    updateVehicleHUD(data);
+                    break;
+                case 'setTalking':
+                    updateHUD({ talking: data.talking });
+                    break;
+                case 'setVoiceRange':
+                    updateHUD({ voiceRange: data.range });
+                    break;
+                case 'toggleSeatbelt':
+                    updateVehicleHUD({ seatbelt: data.seatbelt });
+                    break;
+                case 'setEngineState':
+                    updateVehicleHUD({ engineOn: data.engineOn });
+                    break;
+                case 'setLights':
+                    updateVehicleHUD({ lights: data.lights });
+                    break;
+                case 'updateMoney':
+                    updateMoney(data);
+                    break;
+                case 'updateJob':
+                    updateJob(data);
+                    break;
+                case 'toggleMoneyHUD':
+                    toggleMoneyHUD(data.show);
+                    break;
+                case 'toggleMoneyOnly':
+                    toggleMoneyOnly(data.show);
+                    break;
+                case 'toggleJobOnly':
+                    toggleJobOnly(data.show);
+                    break;
+                case 'setMinimapVisible':
+                    elements.bottomLeftHud.classList.toggle('with-minimap', !!data.visible);
+                    // Recalcular offset inmediato por ajuste contextual en anchos pequeños
+                    if (window.computeResponsiveHud) window.computeResponsiveHud();
+                    break;
+                case 'setHudLayout': {
+                    if (typeof data.offsetPx === 'number') hudOverride.offsetPx = data.offsetPx;
+                    if (typeof data.scale === 'number') hudOverride.scale = data.scale;
+                    // Reaplicar layout inmediatamente
+                    if (window.computeResponsiveHud) window.computeResponsiveHud();
+                    break;
+                }
+                case 'resetHudLayout': {
+                    hudOverride.offsetPx = null;
+                    hudOverride.scale = null;
+                    if (window.computeResponsiveHud) window.computeResponsiveHud();
+                    break;
+                }
+                case 'setCruiseControl':
+                    updateVehicleHUD({ cruiseControl: data.cruiseControl });
+                    break;
+            }
+        });
+
+        // Init
+        document.addEventListener('DOMContentLoaded', () => {
+            // Ajuste responsivo según aspecto
+            function computeResponsiveHud() {
+                const w = window.innerWidth;
+                const h = window.innerHeight;
+                const aspect = w / Math.max(1, h);
+
+                // Offset basado en fracción del ancho (alineado con cliente)
+                let baseFrac = 0.185; // 16:9 y ultrawide
+                if (aspect >= 1.6 && aspect < 1.77) {
+                    // 16:10
+                    baseFrac = 0.205;
+                } else if (aspect >= 1.5 && aspect < 1.6) {
+                    // 3:2 aprox
+                    baseFrac = 0.220;
+                } else if (aspect >= 1.34 && aspect < 1.5) {
+                    // 4:3
+                    baseFrac = 0.240;
+                } else if (aspect < 1.34) {
+                    // 5:4 y más estrechos
+                    baseFrac = 0.260;
+                }
+
+                let offset = Math.round(w * baseFrac);
+                // Margen fijo de seguridad
+                offset += 12;
+
+                // Límites consistentes con cliente (más cerca en low-res)
+                let minOffset = Math.max(200, Math.floor(w * ((w <= 1280 || h <= 720) ? 0.15 : 0.16)));
+                const maxOffset = Math.min(Math.floor(w * 0.28), 680);
+                if (w <= 1024 || h <= 600) {
+                    minOffset = Math.max(minOffset, Math.floor(w * 0.14));
+                }
+
+                // Ajuste contextual: acercar más en anchos pequeños cuando el minimapa está visible
+                if (elements.bottomLeftHud.classList.contains('with-minimap')) {
+                    if (w <= 1024) {
+                        offset = Math.max(minOffset, offset - Math.floor(w * 0.020));
+                    } else if (w <= 1280) {
+                        offset = Math.max(minOffset, offset - Math.floor(w * 0.015));
+                    } else if (w <= 1600) {
+                        offset = Math.max(minOffset, offset - Math.floor(w * 0.010));
+                    }
+                }
+
+                offset = Math.max(minOffset, Math.min(maxOffset, offset));
+
+                // Escalado del HUD similar a cliente
+                let scale = 1.15;
+                if (aspect < 1.6) scale = 1.08;
+                if (aspect < 1.4) scale = 1.02;
+                if (h <= 900) scale = Math.min(scale, 1.10);
+                if (h <= 720) scale = Math.min(scale, 1.03);
+                if (h <= 600) scale = Math.min(scale, 0.98);
+
+                // Aplicar overrides si existen
+                const finalOffset = (typeof hudOverride.offsetPx === 'number') ? hudOverride.offsetPx : offset;
+                const finalScale = (typeof hudOverride.scale === 'number') ? hudOverride.scale : scale;
+
+                elements.bottomLeftHud.style.setProperty('--minimap-offset', finalOffset + 'px');
+                elements.bottomLeftHud.style.transform = `scale(${finalScale})`;
+
+                // Clases de modo compacto
+                const compact = (w <= 1280 || h <= 720);
+                const tiny = (w <= 1024 || h <= 600);
+                document.body.classList.toggle('hud-compact', compact);
+                document.body.classList.toggle('hud-tiny', tiny);
+            }
+
+            // Exponer para mensajes
+            window.computeResponsiveHud = computeResponsiveHud;
+            computeResponsiveHud();
+            window.addEventListener('resize', computeResponsiveHud);
+
+            updateHUD({ 
+                health: 100, 
+                armor: 0, 
+                stamina: 100, 
+                hunger: 100, 
+                thirst: 100, 
+                oxygen: 100, 
+                voiceRange: 2, 
+                inVehicle: false 
+            });
+        });
+    </script>
+</body>
+</html>
