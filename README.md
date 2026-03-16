@@ -6,7 +6,10 @@ Everything runs on the client — no network overhead, no server lag.
 
 ## Preview
 
-*(Coming soon)*
+<img width="1280" height="720" alt="LLORO POR TODO (1)" src="https://github.com/user-attachments/assets/af7a0656-1144-4454-b155-1f0a2019b3b9" />
+
+<img width="1918" height="1196" alt="image" src="https://github.com/user-attachments/assets/2e4198f8-4e6f-4f4a-9269-6e2a838e60ab" />
+
 
 ## Features
 
