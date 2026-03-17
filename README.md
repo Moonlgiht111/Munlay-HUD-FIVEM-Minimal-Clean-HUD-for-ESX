@@ -4,6 +4,8 @@ A lightweight, fully **client-side** HUD with a clean modern design. Zero server
 
 Everything runs on the client — no network overhead, no server lag.
 
+DISCORD: https://discord.gg/zAVv4cVX9R
+
 ## Preview
 
 <img width="1280" height="720" alt="LLORO POR TODO (1)" src="https://github.com/user-attachments/assets/af7a0656-1144-4454-b155-1f0a2019b3b9" />
